@@ -67,9 +67,33 @@ The agent edits the ledger JSON directly (labels, boxes, node ids, recipes, runs
 ## Install the helper (once per page load)
 
 Read `boards_pilot.js` and run its full text with the javascript tool. It defines `window.__bp` and returns
-`boards_pilot v7 installed`. Running it again is a no-op; an older version is replaced. A page reload clears it, so
-reinstall then. Then call `__bp.frame(<screenshot width>)` once, so every click point the helper returns is already in
-the screenshot frame (1568 at 67 % Chrome zoom on a 1920 px page).
+`boards_pilot v8 installed`. Running it again is a no-op; an older version is replaced. A page reload clears it (and
+the Generate panel's refs and prompt), so reinstall then. Then:
+1. `__bp.frame(<screenshot width>)`, so every click point the helper returns is already in the screenshot frame. Every
+   screenshot reports its frame ("coordinate frame: 1568x698"). `frame()` with no argument guesses min(1, 1568 /
+   innerWidth), which matched at 1920 px. The helper records the window size: if the window is resized, every click
+   point throws until `frame()` is called again.
+2. `await __bp.assertHealthy()` at the start of every batch: it throws when Chrome is throttled (see "Run Chrome
+   unthrottled" below).
+
+Nothing else depends on the screen: every position is read from the page or the board at run time.
+
+## Run Chrome unthrottled (recommended)
+
+On Windows, Chrome slows a window that another window covers to about one frame per second, even when
+`document.visibilityState` says "visible" (its native occlusion tracking). Minimized windows stop painting. Then
+screenshots time out (30 s), menus and popovers miss clicks, and only page JavaScript keeps working. The agent's
+`assertHealthy()` catches it, but the operator has to keep the window in front.
+
+The cure is to start Chrome with switches that turn this off. Close every Chrome window first: switches only apply
+when Chrome starts.
+
+```
+"C:\Program Files\Google\Chrome\Application\chrome.exe" --disable-features=CalculateNativeWinOcclusion --disable-backgrounding-occluded-windows --disable-renderer-backgrounding
+```
+
+Make it a shortcut for agent sessions. A covered window then keeps rendering; a minimized one may still pause, so
+leave it un-minimized (behind other windows, or on a second screen).
 
 ## Coordinates
 
@@ -107,7 +131,17 @@ window change.
 | `assertReady({model, refs, chars})` | (v6) GATE: throws unless the model, refs (node-id prefixes, in order) and prompt length match |
 | `await expectRefs(n)` | (v6) GATE: waits up to 3 s for the n-th ref, throws otherwise |
 | `menuItem(label)` | (v6) GATE: the click point of a visible zoom-menu item; throws when the menu is not open |
-| `await waitNew(baseline)` | (v6) waits in the page until every new result has left `loading`; returns them |
+| `await waitNew(baseline, timeout, count)` | (v7) waits in the page until `count` new results have left `loading`; returns them |
+| `expectControl(name, at)`, `expectThumb(id, at)` | (v7) GATES: the control or thumbnail is at the planned point (the Generate button vanishes for a moment after a click) |
+| `await health()`, `await assertHealthy()` | (v8) frame times and visibility; the gate throws when the window is throttled (covered or minimized) |
+| `checkFrame()` | (v8) GATE: the window size is the one `frame()` recorded (every click point calls it) |
+| `settings()` | (v8) the Generate panel's model / aspect / resolution pickers (`value` = id, e.g. `nano-banana-3-image`), Seed (and its field when open), Google Search switch, credit cost |
+| `assertSettings({model, aspect, resolution})` | (v8) GATE on the picker values |
+| `option(valueOrLabel)` | (v8) GATE: the click point of a visible option in an open picker or menu, by value or exact label |
+| `input(label)` | (v8) a visible input by aria-label: `Seed`, `X-position`, `Y-position`, `Width`, `Height`, `Rotation` |
+| `chips()` | (v8) attached ref chips in order, with each chip's remove-button point (hover the chip first) |
+| `props()`, `assertProps({x, y, w, h})` | (v8) the Properties panel's Transform fields for the selected item; the gate after an edit |
+| `layoutPlan(items, {x, y, cols, gap})` | (v8) the organizer's planner: equal-cell grid targets `[{label, x, y, w, h}]` for a set of items |
 
 ## Playbooks
 
@@ -152,8 +186,9 @@ selection, then Zoom out), open the panel, and read `controls()`. Its click poin
 the panel layout don't change.
 1. Say the model and the credits in chat.
 2. **Batch 1:**
+   - JS: `await __bp.assertHealthy()` (v8: stops here if the window is throttled or was resized);
    - click `controls().prompt.click`, press Ctrl+A, type the new prompt;
-   - JS: `__bp.assertReady({model, refs: [...node prefixes], chars: <prompt length>}); window.__base = __bp.resultIds()`;
+   - JS: `__bp.assertSettings({model, aspect, resolution}); __bp.assertReady({refs: [...node prefixes], chars: <prompt length>}); window.__base = __bp.resultIds()`;
    - click `controls().generate.click`;
    - JS: `const r = await __bp.waitNew(window.__base, 60000, <how many Generate clicks>); JSON.stringify({r, plan: __bp.dropPlan(r[0].id, slot)})`.
 
@@ -193,6 +228,34 @@ for each pair, click `slot`, click `item`, then JS `await __bp.expectRefs(n)`. A
 4. Check with `selection()`.
 5. Record the result in the ledger (label, result id, world box) and add the run.
 
+**Generation settings (v8):** model, aspect, resolution and seed, set with real clicks and checked by value.
+1. `s = __bp.settings()`: each picker's `click` point and current `value`.
+2. Click the picker, then JS `__bp.option("<value or label>")`: a gate that throws if the menu did not open. Click its
+   point. Model values sit at the top level or under "More models" (hover it to open the submenu).
+3. Read `settings()` AGAIN before the next picker: a picker's width, and so its click point, changes with its label
+   (seen 2026-10-14: switching to FLUX.2 [pro] moved the model picker 43 px).
+4. **Seed:** click Seed. `input("Seed")` gives the field; triple-click it, type the number, press Tab, click Seed to
+   close. The value persists until cleared (an empty field = a random seed per generation). Use a fixed seed for
+   one-change A/B rounds, then clear it.
+5. Gate before Generate: `__bp.assertSettings({model, aspect, resolution})` plus `assertReady`.
+
+FLUX.2 [pro] has no resolution picker (`resolution: null`). Models, aspects and resolutions seen are listed in
+`docs/BOARDS_FEATURES.md`.
+
+**Exact placement and the organizer (v8).** Properties (right rail) shows X / Y / W / H for ONE selected item, in the
+same board units as the world boxes here (checked to within 7 units). Typing a value and pressing Enter moves or
+resizes it exactly. That is the organizer's tool; drags are only for placing results from the filmstrip.
+1. Select the item (`stamp`, click, `settled`), click the rail's Properties button, then `p = __bp.props()`.
+2. Triple-click `p.fields.x.click`, type the number, press Enter; the same for Y (and W for a uniform width; H follows
+   with the aspect lock).
+3. `__bp.assertProps({x, y})`. Boards records each edit as one undo step ("Change X").
+4. **Tidy a round:** `__bp.layoutPlan(items, {x, y, cols, gap: 196})` gives every item an equal grid cell. Apply each
+   target with steps 1-3. Keep each round in a labelled row or grid; record the layout in the ledger.
+
+**Remove ref chips (to swap refs):** `__bp.chips()` lists the chips and their remove buttons. Hover the chip, click its
+remove point, then `await __bp.expectRefs(n - 1)`. The rest renumber, so remove from the first chip and re-attach in
+order.
+
 **Read results back:**
 - `__bp.result(id)` covers what a run needs.
 - For a full export, see the quiet receipt in `tools/receipt/` (set `globalThis.__boardsReceiptQuiet = true` first:
@@ -218,8 +281,16 @@ for each pair, click `slot`, click `item`, then JS `await __bp.expectRefs(n)`. A
 - **The zoom menu can miss its first click** (the next click then lands on the canvas and selects whatever is under
   it). Gate the menu item with `menuItem()`, and click the zoom button again if it throws.
 - **A 1 fps window.** When the Chrome window is covered or not in front, Chrome throttles it to one frame per second.
-  Screenshots then time out (30 s) and menus lag; JS still works. Check with
-  `requestAnimationFrame` timing (1,000 ms frames = throttled) and ask the operator to bring the window to the front.
+  Screenshots then time out (30 s) and menus lag; JS still works. `assertHealthy()` catches it. Ask the operator to
+  bring the window to the front, or use the switches in "Run Chrome unthrottled".
+- **The multi-select toolbar ACTS on click.** With 2+ items selected it shows Remix, Collect items, **Arrange** and
+  Align. Clicking Arrange immediately laid the two selected items out in a row ("Update selection after arrange"); its
+  menu (Rows / Columns / Mosaic) only switches the layout. One Ctrl+Z on the canvas restored it (2026-10-14). Treat
+  every button there as an action: read its tooltip by hovering, never click to explore.
+- **Some panel buttons open side panels or dialogs, not popovers.** Effects opens a settings side panel that its own
+  Close button (top right) closes; clicking Effects again does not. Elements (the @ button) and Create element open
+  "Move board to project": Cancel it.
+- **A page reload clears the Generate panel** (refs and prompt), as well as the helper.
 - **Before Ctrl+Z, check focus.** With focus in the prompt editor, Ctrl+Z undoes prompt typing, not the board. Click
   the canvas first. Ctrl+Z on the canvas undoes a placement or a move cleanly (the undo title goes back).
 - **A click on empty canvas closes the Generate panel** (refs and prompt are kept). So never deselect that way

@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.3.0 (2026-10-14)
+
+**`skill/boards_pilot.js` v8:** screen-independent, window-aware, settings and organizer.
+- `frame()` with no argument guesses the screenshot scale. The window size is recorded, and every click point checks
+  it (`checkFrame()`): a resized window throws instead of producing wrong clicks.
+- `health()` / `assertHealthy()`: detects the 1 fps throttling Chrome applies to a covered or minimized window (17 ms
+  frames in front, 1,000 ms behind another window, measured). Put the gate first in every batch.
+- `settings()` / `assertSettings()` / `option()`: model, aspect and resolution pickers by value (e.g.
+  `nano-banana-3-image`), the Seed field, the Google Search switch and the credit cost. Tested live: switched to FLUX.2
+  [pro] and back; set a fixed seed and cleared it.
+- `props()` / `assertProps()` / `input()`: exact placement and sizing through the Properties panel's X / Y / W / H
+  fields, which use the same board units as the helper. Tested live: moved an item 47 units by typing and back,
+  exactly.
+- `layoutPlan()`: equal-cell grid targets for organizing a round. `chips()`: ref chips with their remove buttons.
+
+**`docs/BOARDS_FEATURES.md` (new):** a catalogue of what Boards' web UI offers an agent. It covers the main menu, both
+toolbars, the right rail (Properties, Search, AI Assistant, Comments), all model / aspect / resolution options, Effects,
+37 Presets, Generate video (Veo 3.1: 400 credits per 8 s clip), and Vary (6 images for 30 credits). The image toolbar
+covers Edit (Insert / Remove / Expand), Convert (Image to video / Image to 3D) and More (Copy as PNG, Copy link to
+selection, Reorder). It also marks which buttons act at once.
+
+**`skill/SKILL.md`:**
+- New sections: "Run Chrome unthrottled" (launch switches), generation settings, exact placement and the organizer,
+  and removing ref chips.
+- The fast round now starts with `assertHealthy` and `assertSettings`.
+- New traps: the multi-select toolbar acts on click (Arrange laid two items out at once; undone); Effects / Elements
+  open side panels or dialogs; a reload clears the panel.
+
+**Tests:** `tests/boards_pilot_pure_test.cjs`, the helper's first tests (install, frame / checkFrame, layoutPlan,
+slotRight).
+
 ## 0.2.0 (2026-10-14)
 
 **`skill/boards_pilot.js` v6:** fewer agent round trips per ideation round (about 10 calls down to 3-4).

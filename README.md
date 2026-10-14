@@ -59,6 +59,7 @@ and within Adobe's terms.
 
 ```
 python -m unittest discover -s tests                         # ledger.py
+node tests/boards_pilot_pure_test.cjs                        # boards_pilot.js (no-page parts)
 cd tools/receipt && node tests/boards_receipt_mock_test.cjs  # exporter (mock page)
 cd tools/receipt && PYTHONPATH=. python -m unittest discover -s tests   # reader
 ```

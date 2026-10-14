@@ -1,7 +1,8 @@
 ;(() => {
   "use strict";
-  // boards_pilot.js v7 (firefly-boards-pilot; first written 2026-10-13 as show_tools/boards_pilot.js v4; v6 2026-10-14
-  // added DOM controls, placement plans and batch gates; v7 the same day fixes what the first live round found):
+  // boards_pilot.js v8 (firefly-boards-pilot; first written 2026-10-13 as show_tools/boards_pilot.js v4; v6 2026-10-14
+  // added DOM controls, placement plans and batch gates; v7 fixed what the first live round found; v8 adds window
+  // health, generation settings (model/aspect/resolution/seed), exact placement via Properties and the organizer):
   // helpers for an agent piloting Adobe Firefly Boards through a browser agent (built with Claude in Chrome).
   // Install by running this file's text with the javascript tool (page MAIN world), once per page load; it defines
   // window.__bp. Everything is READ-ONLY: Boards' view models are read through plain data properties only, never a
@@ -10,7 +11,7 @@
   // Coordinates: "page" = CSS px of the browser viewport; "world" = board units, stable while an item is not moved:
   // world = (page - origin - t) / scale. "shot" = the agent's screenshot frame = page * K, where K is set once with
   // frame(screenshot width); K = 1 at 100 % Chrome zoom.
-  const VERSION = 7;
+  const VERSION = 8;
   if (window.__bp && window.__bp.version === VERSION) return "boards_pilot v" + VERSION + " already installed";
 
   const attempt = (fn, fallback = null) => { try { return fn(); } catch { return fallback; } };
@@ -193,9 +194,22 @@
   // A browser_batch fixes every click coordinate in advance and stops at the first tool error. So: read the controls
   // and plans first, then send one batch whose JS steps are GATES. A gate throws when the page is not as expected,
   // which stops the batch before the next click; a Generate click can never follow a wrong setup.
-  let K = 1;
-  function frame(shotWidth) { K = shotWidth / innerWidth; return K; }
-  const shot = p => ({ x: Math.round(p.x * K), y: Math.round(p.y * K) });
+  // The screenshot frame. frame(W) takes the width the agent's screenshot reports; frame() with no argument guesses
+  // K = min(1, 1568 / innerWidth), the long-side cap Claude in Chrome used at 1920 px (1568 x 744, 2026-10-14); check
+  // the guess against the first screenshot. The window size is recorded, and every click point checks it: a resized
+  // window makes every planned coordinate wrong, so it throws until frame() is called again.
+  let K = 1, frameAt = null;
+  function frame(shotWidth) {
+    K = shotWidth ? shotWidth / innerWidth : Math.min(1, 1568 / innerWidth);
+    frameAt = { w: innerWidth, h: innerHeight, dpr: devicePixelRatio, auto: !shotWidth };
+    return { k: K, ...frameAt };
+  }
+  function checkFrame() {
+    if (frameAt && (innerWidth !== frameAt.w || innerHeight !== frameAt.h || devicePixelRatio !== frameAt.dpr))
+      fail(`window changed from ${frameAt.w}x${frameAt.h}@${frameAt.dpr} to ${innerWidth}x${innerHeight}@${devicePixelRatio}: ` +
+        "take a screenshot and call __bp.frame(<its width>) again");
+  }
+  const shot = p => { checkFrame(); return { x: Math.round(p.x * K), y: Math.round(p.y * K) }; };
   const centre = b => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 });
   const ctl = el => { if (!el || !visible(el)) return null; const b = box(el); return { page: b, click: shot(centre(b)) }; };
   const text = el => (el.innerText || "").trim().replace(/\s+/g, " ");
@@ -361,6 +375,118 @@
     return t;
   }
 
+  // ---- v8: window health, generation settings, exact placement, the organizer ----
+
+  // Chrome throttles a covered or minimized window to ~1 frame per second (Windows native occlusion tracking), even
+  // while document.visibilityState says "visible". Screenshots then time out (30 s) and menus miss clicks; JS reads still
+  // work. health() measures it; assertHealthy() is the gate to put first in a batch. Measured 2026-10-14: 17 ms frames
+  // in front, 1,000 ms frames behind another window. The cure is a Chrome launch switch (see SKILL.md).
+  async function health(samples = 3) {
+    const frames = [];
+    for (let i = 0; i < samples; i++) frames.push(await new Promise(r => {
+      const t0 = performance.now(); requestAnimationFrame(() => r(Math.round(performance.now() - t0))); setTimeout(() => r(3000), 3000);
+    }));
+    const median = [...frames].sort((a, b) => a - b)[Math.floor(frames.length / 2)];
+    return { ok: median < 250, frameMs: frames, median, visibility: document.visibilityState, focus: document.hasFocus(),
+      inner: [innerWidth, innerHeight], frame: frameAt };
+  }
+  async function assertHealthy() {
+    const h = await health();
+    if (!h.ok) fail(`Chrome is throttled (median frame ${h.median} ms): the window is covered or minimized. ` +
+      "Bring it to the front, or launch Chrome with the switches in SKILL.md");
+    checkFrame();
+    return h;
+  }
+
+  // The generation settings in the Generate panel. Each picker carries its current value as a plain attribute.
+  // Values seen 2026-10-14: model nano-banana-3-image (Nano Banana 2), firefly5-image, flux-2-image,
+  // gpt-image-2.5-prism-image (Sunburst), gpt-image-2.5-flare-image, runway-gen4-image-image, and under "More models"
+  // firefly4-image, nano-banana-2-image (Nano Banana Pro), flux-kontext-image, gpt-image-2-image and more; aspect
+  // auto, landscape, square, portrait, widescreen, ... (15); resolution 512p, 1k, 2k, 4k.
+  function settings() {
+    const bar = walk(el => el.localName === "aura-prompt-bar");
+    if (!bar || !visible(bar)) return { panelOpen: false };
+    const pickers = walkAll(bar, el => el.localName === "sp-picker" && visible(el));
+    const label = p => { const sel = p.querySelector("sp-menu-item[selected]"); return sel ? text(sel).split(" ").slice(0, 8).join(" ") : null; };
+    const pick = test => { const p = pickers.find(test); return p ? { value: p.getAttribute("value"), label: label(p), ...ctl(p) } : null; };
+    const seedBtn = walkAll(bar, el => el.localName === "sp-action-button" && el.getAttribute("aria-label") === "Seed").find(visible);
+    const search = walkAll(bar, el => el.localName === "sp-switch").find(visible);
+    const cost = walkAll(bar, el => el.localName === "sp-action-button" && /credits/i.test(text(el))).find(visible);
+    return { panelOpen: true,
+      model: pick(p => (p.getAttribute("label") || p.getAttribute("aria-label")) === "Select a model"),
+      aspect: pick(p => (p.getAttribute("label") || p.getAttribute("aria-label")) === "Aspect ratio"),
+      resolution: pick(p => /^\d+(k|p)$/i.test(p.getAttribute("value") || "")),
+      seed: seedBtn ? { ...ctl(seedBtn), field: input("Seed") } : null,
+      googleSearch: search ? search.hasAttribute("checked") : null,
+      cost: cost ? text(cost) : null };
+  }
+  // GATE: the panel's model / aspect / resolution values (picker attribute values, e.g. "nano-banana-3-image").
+  function assertSettings(want = {}) {
+    const s = settings();
+    if (!s.panelOpen) fail("the Generate panel is closed");
+    for (const k of ["model", "aspect", "resolution"])
+      if (want[k] && (!s[k] || s[k].value !== want[k])) fail(`${k} is ${s[k] && s[k].value}, expected ${want[k]}`);
+    return s;
+  }
+  // A visible option of an open picker or menu, by its value or exact label; throws when it is not on screen.
+  function option(valueOrLabel) {
+    const el = walkAll(document.documentElement, el => el.localName === "sp-menu-item" && visible(el) &&
+      (el.getAttribute("value") === valueOrLabel || text(el) === valueOrLabel))[0];
+    if (!el) fail(`option "${valueOrLabel}" is not visible (is its picker open?)`);
+    return { value: el.getAttribute("value"), selected: el.hasAttribute("selected"), ...ctl(el) };
+  }
+  // A visible text input by its aria-label: "Seed" (Seed popover), "X-position", "Y-position", "Width", "Height",
+  // "Rotation" (Properties panel). Returns its value and click point, or null.
+  function input(label) {
+    const el = walkAll(document.documentElement, el => el.localName === "input" && el.getAttribute("aria-label") === label)
+      .find(visible);
+    return el ? { value: el.value, ...ctl(el) } : null;
+  }
+
+  // The attached ref chips, in order, with the click point of each chip's remove button (it is invisible until the chip
+  // is hovered: hover the chip first, then click remove). Removing one renumbers the rest.
+  function chips() {
+    const bar = walk(el => el.localName === "aura-prompt-bar");
+    if (!bar || !visible(bar)) return [];
+    const imgs = walkAll(bar, el => el.localName === "img" && visible(el) && box(el).w > 80).map(el => box(el)).sort((a, b) => a.x - b.x);
+    const xs = walkAll(bar, el => el.localName === "sp-action-button" && !el.getAttribute("aria-label") && box(el).w > 20 &&
+      box(el).w < 40).map(el => box(el));
+    const r = refs();
+    return imgs.map((b, i) => {
+      const x = xs.find(c => c.x > b.x && c.x < b.x + b.w + 10 && Math.abs(c.y - b.y) < 40);
+      return { n: i + 1, node: r[i] ? r[i].node : null, chip: shot(centre(b)), remove: x ? shot(centre(x)) : null };
+    });
+  }
+
+  // Exact placement through the Properties panel (right rail "Properties", with ONE item selected): its X / Y / W / H
+  // fields use the same board units as world boxes here (checked 2026-10-14, within 7 units at 6 % zoom). Typing a value
+  // and pressing Enter moves or resizes the item exactly: no drag, no drop error. props() reads the fields;
+  // assertProps() is the gate after the edits.
+  function props() {
+    const f = { x: input("X-position"), y: input("Y-position"), w: input("Width"), h: input("Height") };
+    if (!f.x) return null;
+    const num = v => v && Number(String(v.value).replace(/[^\d.\-]/g, ""));
+    return { x: num(f.x), y: num(f.y), w: num(f.w), h: num(f.h), fields: f };
+  }
+  function assertProps(want, tol = 2) {
+    const p = props();
+    if (!p) fail("the Properties panel is not showing one selected item");
+    for (const k of ["x", "y", "w", "h"])
+      if (want[k] != null && Math.abs(p[k] - want[k]) > tol) fail(`${k} is ${p[k]}, expected ${want[k]}`);
+    return p;
+  }
+
+  // The organizer's planner: target boxes for items laid out in a grid, row-major, from a top-left origin.
+  // items: [{label, w, h}] (world sizes); opts: {x, y, cols, gap = 196, rowGap = gap, cell: "max" | {w, h}}.
+  // Every cell gets the same size (the largest item, unless cell is given), so rows and columns line up whatever the
+  // aspect ratios. Returns [{label, x, y, w, h}]; apply each with the Properties panel (type X, Y; optionally W).
+  function layoutPlan(items, opts = {}) {
+    const cols = Math.max(1, opts.cols || items.length), gap = opts.gap ?? 196, rowGap = opts.rowGap ?? gap;
+    const cw = opts.cell && opts.cell.w || Math.max(...items.map(i => i.w)), ch = opts.cell && opts.cell.h || Math.max(...items.map(i => i.h));
+    return items.map((it, i) => ({ label: it.label, x: Math.round((opts.x || 0) + (i % cols) * (cw + gap)),
+      y: Math.round((opts.y || 0) + Math.floor(i / cols) * (ch + rowGap)), w: it.w, h: it.h }));
+  }
+
   function observe() {
     const cam = camera();
     return { version: VERSION, board: (location.pathname.match(/urn:[^/]+/) || [null])[0],
@@ -374,6 +500,7 @@
   window.__bp = { version: VERSION, observe, camera, origin, toWorld, toPage, selection, stamp, settled, occluders, visiblePoint,
     refs, prompt, resultIds, result, newResults, ghost,
     frame, controls, thumbs, thumb, menuItem, clickable, slotRight, dropPlan, movePlan, offWorld, attachPlan,
-    assertReady, expectRefs, waitNew, expectControl, expectThumb };
+    assertReady, expectRefs, waitNew, expectControl, expectThumb,
+    health, assertHealthy, checkFrame, settings, assertSettings, option, input, chips, props, assertProps, layoutPlan };
   return "boards_pilot v" + VERSION + " installed";
 })()
