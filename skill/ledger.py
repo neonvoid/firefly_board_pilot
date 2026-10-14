@@ -154,6 +154,39 @@ def import_snapshot(snapshot_path: Path, folder: Path) -> tuple[Path, dict]:
     return path, report
 
 
+def locate(data: dict, box: tuple[float, float, float, float] | None = None,
+           point: tuple[float, float] | None = None, top: int = 3) -> list[dict]:
+    """Ledger items under a board box (e.g. the operator's selection, from __bp.selection().world) or a point.
+
+    A box ranks items by overlap (intersection over union), so a box read at low zoom (tens of units off) still finds
+    its item. A point returns the items whose box contains it, smallest first (the most specific item wins over an
+    artboard around it)."""
+    found = []
+    for label, it in (data.get("items") or {}).items():
+        w = it.get("world") or {}
+        if not all(isinstance(w.get(k), (int, float)) for k in ("x", "y", "w", "h")):
+            continue
+        if box:
+            bx, by, bw, bh = box
+            ix = max(0.0, min(bx + bw, w["x"] + w["w"]) - max(bx, w["x"]))
+            iy = max(0.0, min(by + bh, w["y"] + w["h"]) - max(by, w["y"]))
+            inter = ix * iy
+            union = bw * bh + w["w"] * w["h"] - inter
+            score = inter / union if union > 0 else 0.0
+        elif point:
+            px, py = point
+            inside = w["x"] <= px <= w["x"] + w["w"] and w["y"] <= py <= w["y"] + w["h"]
+            score = 1.0 / (1.0 + w["w"] * w["h"]) if inside else 0.0
+        else:
+            raise ValueError("give a box or a point")
+        if score > 0:
+            found.append((score, {"label": label, "overlap": round(score, 4) if box else None,
+                                  "result_id": it.get("result_id"), "node": it.get("node"), "role": it.get("role"),
+                                  "world": w}))
+    found.sort(key=lambda f: f[0], reverse=True)
+    return [f[1] for f in found[:top]]
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dir", help="ledger folder (overrides env/config)")
@@ -164,6 +197,10 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("export", help="write a shareable snapshot"); p.add_argument("file"); p.add_argument("--out", required=True)
     p.add_argument("--keep-paths", action="store_true", help="keep local 'file' paths in items")
     p = sub.add_parser("import", help="merge a snapshot into the local ledger"); p.add_argument("snapshot")
+    p = sub.add_parser("at", help="which ledger items are at a board box or point (e.g. the operator's selection)")
+    p.add_argument("file"); g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("--box", help="x,y,w,h in board units (__bp.selection().world)")
+    g.add_argument("--point", help="x,y in board units")
     args = ap.parse_args(argv)
     folder = ledger_dir(args.dir)
     try:
@@ -180,6 +217,15 @@ def main(argv: list[str] | None = None) -> int:
         elif args.cmd == "import":
             path, report = import_snapshot(Path(args.snapshot), folder)
             print(path); print(json.dumps(report, indent=2))
+        elif args.cmd == "at":
+            nums = lambda s: tuple(float(v) for v in s.split(","))
+            box = nums(args.box) if args.box else None
+            point = nums(args.point) if args.point else None
+            if (box and len(box) != 4) or (point and len(point) != 2):
+                raise ValueError("--box takes x,y,w,h and --point takes x,y")
+            hits = locate(load(Path(args.file)), box=box, point=point)
+            print(json.dumps(hits, indent=2, ensure_ascii=False))
+            return 0 if hits else 1
     except (ValueError, FileExistsError, OSError, json.JSONDecodeError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2

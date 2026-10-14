@@ -252,6 +252,34 @@ resizes it exactly. That is the organizer's tool; drags are only for placing res
 4. **Tidy a round:** `__bp.layoutPlan(items, {x, y, cols, gap: 196})` gives every item an equal grid cell. Apply each
    target with steps 1-3. Keep each round in a labelled row or grid; record the layout in the ledger.
 
+**Organize with artboards (named groups; tested 2026-10-14):**
+1. **Back up first:** main menu → Save a copy → name it → Your files → Save. It opens the copy in a new tab; close
+   that tab and keep working on the original.
+2. **Lay out:** set exact X/Y per item through Properties (above). Move right to left, so an item never lands on one
+   that hasn't moved yet. Open Properties per item and close it before clicking the next. **Opening Properties can
+   pan the canvas** to keep the selection clear of the panel, so recompute click points after that (a camera check
+   before each click catches it).
+3. **Select the group:** click the first item, shift-click the rest, and check `selection().count`. A shift-click on
+   the current selection's edge or handle resizes instead of adding, so click item interiors away from the selection
+   box. Escape does not deselect; click empty canvas.
+4. Right-click inside the selection → `menuItem("Artboard from selection")` → click it. Boards wraps the items in
+   "Artboard #N" with about 360-420 units of padding. Leave about 800 units between groups, or two artboards
+   overlap.
+5. **Name it:** click the artboard's title (it selects the artboard, `types: ["artboard"]`), double-click it (focus
+   moves to `edit-artboard-name`), Ctrl+A, type, Enter. Boards logs "Set new arboard name" (its spelling).
+6. **Moving an artboard** (Properties X/Y on it) moves everything inside. Record the new boxes in the ledger,
+   including the artboard as an item.
+
+**The operator's pick ("continue from this one"):** the operator selects the image in the tab the agent drives and
+says so. The agent then:
+1. reads `__bp.selection().world`;
+2. runs `python ledger.py at <ledger> --box x,y,w,h`, which ranks ledger items by overlap and returns the label,
+   `result_id`, `node` and role;
+3. zooms a screenshot to `selection().page` (times K) to see it.
+
+No screenshots from the operator are needed. The selection is per tab: a pick made in another window is invisible
+here.
+
 **Remove ref chips (to swap refs):** `__bp.chips()` lists the chips and their remove buttons. Hover the chip, click its
 remove point, then `await __bp.expectRefs(n - 1)`. The rest renumber, so remove from the first chip and re-attach in
 order.

@@ -85,6 +85,24 @@ class LedgerTests(unittest.TestCase):
         self.assertTrue(path.exists())
         self.assertEqual(report["items_added"], ["look"])
 
+    def test_locate_by_box_and_point(self):
+        data = {"items": {
+            "frame": {"world": {"x": 0, "y": 0, "w": 5000, "h": 2000}},
+            "a": {"result_id": "r-a", "world": {"x": 100, "y": 100, "w": 1200, "h": 900}},
+            "b": {"result_id": "r-b", "world": {"x": 1500, "y": 100, "w": 1200, "h": 900}},
+            "nobox": {"world": {"x": 1}}}}
+        hits = ledger.locate(data, box=(130, 80, 1190, 905))  # a selection read 30 units off
+        self.assertEqual(hits[0]["label"], "a")
+        self.assertEqual(hits[0]["result_id"], "r-a")
+        self.assertEqual([h["label"] for h in ledger.locate(data, point=(1600, 500))][:2], ["b", "frame"])
+        self.assertEqual(ledger.locate(data, point=(9000, 9000)), [])
+        path = ledger.new(URL, "t", self.root)
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        doc["items"] = {k: v for k, v in data["items"].items() if k != "nobox"}  # load() validates
+        path.write_text(json.dumps(doc), encoding="utf-8")
+        self.assertEqual(ledger.main(["at", str(path), "--point", "200,200"]), 0)
+        self.assertEqual(ledger.main(["at", str(path), "--point", "9000,9000"]), 1)
+
     def test_cli_validate_exit_codes(self):
         good = ledger.new(URL, "t", self.root)
         self.assertEqual(ledger.main(["validate", str(good)]), 0)

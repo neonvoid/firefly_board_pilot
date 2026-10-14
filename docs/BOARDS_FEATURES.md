@@ -99,6 +99,34 @@ Right rail:    AI Assistant (beta) · Properties · Generation history · Search
 **Copy as PNG** puts the image on the clipboard, which local tools can save to disk without a browser download.
 **Copy link to selection** gives a deep link to exactly what is selected (a round), for sharing.
 
+## Grouping and context: artboards, collect, group, projects, Elements
+
+Adobe uses "elements" in two senses: any visual item on a board, and the **Elements** feature below. Sources: Adobe Help
+"Collect, arrange, and align elements in canvas" (updated 2026-08-18), "Add artboards to the canvas" (2025-09-24) and
+"Create an element" (2026-08-19); the Adobe Community post "Create consistent Characters & Elements in Firefly Boards".
+
+- **Artboards** are named frames on the canvas. Draw one with the Artboard tool (A), or right-click a multi-selection →
+  **Artboard from selection**. Properties sets an artboard's size, position, rotation, colour, blend mode and opacity.
+  Items dragged inside belong to it.
+- **Collect items** (multi-select toolbar or context menu) gathers the selection into a grid inside a new artboard.
+  Unavailable when the selection includes text.
+- **Arrange** (Rows / Columns / Mosaic) then shows a magenta spacer bar: drag it to set the spacing. **Align**: left,
+  center, right, top, middle, bottom, distribute horizontally / vertically. **Group** and the layer order sit under More.
+  Adobe's help says to HOVER these icons to open their options; clicking Arrange applied a layout at once.
+- **Projects** hold boards and their **Elements**. Elements and Create element on a board need the board inside a
+  project ("Move board to project"), a change to how the operator's files are organized: the operator decides.
+- **Elements** (beta, "unified generation and editing experience"): reusable Characters, Locations and Objects that
+  keep a subject's look consistent across generations.
+  - **Create** one from a generated image ("Create element") or with "+ Create new element".
+  - **Fields:** a type (Character / Location / Object), a name, a description (what to keep, and what to ignore), and
+    extra reference images (several angles help).
+  - **Character sheet:** a Character element can generate one (Head, expressions & features; Body, poses & movement →
+    Generate all). It keeps generating in the background, and credits apply.
+  - **Use:** generation bar → Image / Video → Elements → the element's name (the @ button in the Boards panel).
+    Create / Manage add, edit and delete them.
+- **The manual equivalent** (Community post): a four-view, A-pose character sheet in one widescreen frame, attached as
+  a numbered reference and named by number in prompts. The post recommends Gemini 3.1 (Nano Banana 2) at 4K.
+
 ## Two or more items selected
 
 The toolbar shows **Remix**, **Collect items**, **Arrange**, **Align** and More. **[acts]**: clicking Arrange

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.1 (2026-10-14)
+
+- **`ledger.py at <ledger> --box x,y,w,h | --point x,y`:** which ledger items sit at the operator's selection (ranked
+  by overlap; a point returns the most specific item first). This is how an operator "picks" an image to continue
+  from without sending screenshots. Test added (8 ledger tests).
+- **`skill/SKILL.md`:** the artboard organizer playbook, tested live on a real board. It covers the backup copy, exact
+  Properties layout, group select, Artboard from selection, naming, and moving an artboard with its contents. Also the
+  pick playbook.
+- **New traps:** opening Properties can pan the canvas; a shift-click on the selection's edge resizes instead of
+  adding; Escape does not deselect; artboards pad about 360-420 units.
+- **`docs/BOARDS_FEATURES.md`:** grouping and context (artboards, Collect items, Group, Projects, Elements), from
+  Adobe Help and the Adobe Community.
+
 ## 0.3.0 (2026-10-14)
 
 **`skill/boards_pilot.js` v8:** screen-independent, window-aware, settings and organizer.
