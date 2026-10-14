@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.2.0 (2026-10-14)
+
+**`skill/boards_pilot.js` v6:** fewer agent round trips per ideation round (about 10 calls down to 3-4).
+- `frame()`: click points come back in the screenshot frame (non-100 % Chrome zoom).
+- `controls()`: the Generate panel's buttons, the zoom button and the filmstrip, read from the DOM instead of
+  screenshots. Thumbnails carry their result id (`__resultId`).
+- Placement: `slotRight`, `dropPlan` (one drag; the drop puts the item's top-left on the slot, measured 0-1 world
+  units off at 74 % zoom), `movePlan`, `offWorld`.
+- `attachPlan`: all ref clicks for one batch, with the Image slot's moves predicted.
+- Gates that throw and so stop a batch: `assertReady` (model, refs, prompt length) before Generate, `expectRefs`
+  after each ref click, and `menuItem` for the zoom menu. `waitNew` waits for results inside the page.
+- Tested live on a 74 % board: control points matched hand-measured clicks within 2 px; the gates threw on a wrong ref
+  order, a wrong prompt length and a closed menu; a test drop was undone with Ctrl+Z.
+
+**`skill/boards_pilot.js` v7:** fixes from the first live round with v6 (two variants, 40 credits).
+- `occluders()` includes a selected item's floating toolbar: a drop onto it does nothing, and one did.
+- `movePlan` picks a grab point whose destination is also clickable, so a half off-screen item can be moved.
+- `waitNew(baseline, timeout, count)`: waits for `count` results; before, it returned when the first was done.
+- New gates: `expectControl(name, at)` (the Generate button vanishes for a moment after a click) and
+  `expectThumb(id, at)` before a filmstrip drag (with the panel closed, the drag moved a canvas item instead; undone).
+- Drop accuracy is not always exact (0-64 page px measured), so the playbook always checks and fixes.
+
+**`skill/SKILL.md`:** the fast-round and one-batch attach playbooks (v7 flow: plan each drop after the previous one,
+gate each drag, check and fix), and new traps: `refs()` lag, the moving Image slot, the zoom-menu miss, the 1 fps
+covered window, focus before Ctrl+Z, a canvas click closes the panel, the selection toolbar. Alt+Ctrl+0 (Fit all)
+works through Claude in Chrome. Plus the filmstrip-drag placement and the prompting lessons from 2026-10-13
+(`PROMPTING.md` §5b).
+
 ## 0.1.0 (2026-10-13)
 
 First packaging, from the adobe lane's tools of 2026-10-12/13.

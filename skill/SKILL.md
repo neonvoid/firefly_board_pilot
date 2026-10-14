@@ -30,8 +30,9 @@ Files in this folder:
 
 ## Rules (hold them always)
 
-1. **Read-only.** The helper reads plain data properties of Boards' view models and page element boxes. Never call a
-   getter or an app method (`submitAction`, `submitProperty`, store writes), and make no network calls from the page.
+1. **Read-only.** The helper reads plain data properties of Boards' view models, and page elements through standard DOM
+   reads (boxes, text, attributes). Never call a getter or an app method on Boards' objects (`submitAction`,
+   `submitProperty`, store writes), and make no network calls from the page. Every click is a real agent click.
 2. **The ghost panel is the one write.** `ghost(true)` sets `visibility:hidden; pointer-events:none` on the Generate panel
    so a click reaches a canvas item beneath it, and `ghost(false)` restores it. Board data is never touched. Ask the
    operator once per board/session whether it is allowed.
@@ -66,7 +67,9 @@ The agent edits the ledger JSON directly (labels, boxes, node ids, recipes, runs
 ## Install the helper (once per page load)
 
 Read `boards_pilot.js` and run its full text with the javascript tool. It defines `window.__bp` and returns
-`boards_pilot v5 installed`. Running it again is a no-op. A page reload clears it, so reinstall then.
+`boards_pilot v7 installed`. Running it again is a no-op; an older version is replaced. A page reload clears it, so
+reinstall then. Then call `__bp.frame(<screenshot width>)` once, so every click point the helper returns is already in
+the screenshot frame (1568 at 67 % Chrome zoom on a 1920 px page).
 
 ## Coordinates
 
@@ -94,6 +97,17 @@ window change.
 | `prompt()` | `{model, aspect, n, promptChars, promptHead, refs}` |
 | `resultIds()`, `newResults(baseline)`, `result(id)` | results in the generation feed: status, model, timing, the ref nodes used |
 | `ghost(true / false)` | hide / restore the Generate panel (rule 2) |
+| `frame(shotWidth)` | (v6) sets K = screenshot px per page px; every `click`, `from` and `to` below is in the screenshot frame |
+| `controls()` | (v6) `{page, click}` of `openGenerate`, `imageSlot`, `prompt`, `generate`, `close`, `zoom`, plus `thumbs`. Read from the DOM, so no screenshot is needed to find a button |
+| `thumbs()`, `thumb(resultId)` | (v6) filmstrip thumbnails left to right (newest at the right end), each with its `resultId` (`__resultId` on the element) |
+| `slotRight(anchor, size?, gap = 196)` | (v6) the world box of the free slot right of an item |
+| `dropPlan(resultId, slot)` | (v6) `{ok, from, to}`: ONE drag from the thumbnail that puts the result's top-left on the slot |
+| `movePlan(slot)`, `offWorld(slot)` | (v6) the drag that moves the selected item onto a slot, and how far off it is now |
+| `attachPlan(worldBoxes)` | (v6) `[{n, slot, item}]` click pairs that attach refs in order; the Image slot's later positions are predicted |
+| `assertReady({model, refs, chars})` | (v6) GATE: throws unless the model, refs (node-id prefixes, in order) and prompt length match |
+| `await expectRefs(n)` | (v6) GATE: waits up to 3 s for the n-th ref, throws otherwise |
+| `menuItem(label)` | (v6) GATE: the click point of a visible zoom-menu item; throws when the menu is not open |
+| `await waitNew(baseline)` | (v6) waits in the page until every new result has left `loading`; returns them |
 
 ## Playbooks
 
@@ -131,8 +145,48 @@ The refs stay attached.
 4. Poll `__bp.newResults(base)` until there is exactly one new result with a final `status` (e.g. `success`), about
    20 s for Nano Banana 2. Its `refNodes` must equal the refs you attached.
 
+**Fast round (v7): one prompt change, generate, place, look, in two or three batches.** Use it when the refs are
+already attached and only the prompt changes (the usual ideation loop). Before the first round: `frame()`, set the
+camera so the source and its empty slot(s) are on screen at 25 % zoom or more (select the source, zoom menu → Zoom to
+selection, then Zoom out), open the panel, and read `controls()`. Its click points stay valid while the window and
+the panel layout don't change.
+1. Say the model and the credits in chat.
+2. **Batch 1:**
+   - click `controls().prompt.click`, press Ctrl+A, type the new prompt;
+   - JS: `__bp.assertReady({model, refs: [...node prefixes], chars: <prompt length>}); window.__base = __bp.resultIds()`;
+   - click `controls().generate.click`;
+   - JS: `const r = await __bp.waitNew(window.__base, 60000, <how many Generate clicks>); JSON.stringify({r, plan: __bp.dropPlan(r[0].id, slot)})`.
+
+   If the gate throws, the batch stops before Generate and nothing is spent. **Several variants:** after a Generate
+   click, `await __bp.expectControl("generate", at)` (the button vanishes for a moment while Boards re-renders), then
+   type the next prompt and click again. Generate stays enabled while a result is loading. In practice the agent takes
+   longer to type the next prompt than Nano Banana 2 takes to finish (17 s), so this pipelines rather than overlaps.
+3. **Batch 2, one per result:**
+   - JS gate: `__bp.expectThumb(id, plan.from)`. It throws if the panel closed or the strip moved; otherwise the drag
+     would grab whatever canvas item is under that point;
+   - `left_click_drag` from `plan.from` to `plan.to`;
+   - JS: `JSON.stringify({off: __bp.offWorld(slot), fix: __bp.movePlan(slot), next: __bp.dropPlan(nextId, nextSlot)})`.
+
+   Plan the next drop only AFTER this one: the placed item is selected, and its toolbar can cover the next slot
+   (`occluders()` now includes it). If `off` is more than ~20 units, send the `fix` drag.
+4. Look: close the panel with its X, then zoom (Alt+Ctrl+0 = Fit all works through Claude in Chrome; for Zoom to
+   selection, click `controls().zoom.click`, gate with `__bp.menuItem("Zoom to selection")`, click it). Screenshot.
+5. Ledger: the items, their boxes and the runs.
+
+**Drop accuracy (measured 2026-10-14):** the filmstrip drop puts the item's top-left on the drop point at 32 % and
+74 % zoom (0-1 units off). At 33 % one drop landed 24 page px low, and one dropped next to a fresh neighbour ended
+flush against it (64 px off). At 6 % drops landed 30-45 px off. So always read `offWorld` and fix with `movePlan`.
+If `dropPlan` returns `ok: false`, the slot is off-screen or covered: zoom out, or drop on any visible spot, then move.
+
+**Attach refs in one batch (v6):** `attachPlan([box1, box2, ...])` returns the click pairs. Send them as one batch:
+for each pair, click `slot`, click `item`, then JS `await __bp.expectRefs(n)`. A `null` slot (the chip row is full) or a
+`null` item (not visible) means attach that one by hand.
+
 **Place side by side:**
-1. Select the result in Generation history, then click **Place on canvas**. It does **not** select the placed item; the
+0. **Best: drag the result's thumbnail from the filmstrip** (above the open panel) onto the canvas. Boards places it
+   ("StampGun place items on canvas") and **selects it**, so `settled()` gives its box at once. Its top-left lands on
+   the drop point, so `dropPlan()` gives the one drag (above).
+1. Otherwise select the result in Generation history, then click **Place on canvas**. It does **not** select the placed item; the
    item drops near where the history item was.
 2. `s = stamp()`, click the dropped item, then `await settled(s)` to read its box.
 3. `left_click_drag` from its centre to the `toPage` centre of the slot next to the source.
@@ -155,6 +209,24 @@ The refs stay attached.
   "Fit all content"). The scroll wheel pans very slowly at low zoom.
 - **The model's picker label and id differ.** "Gemini 3.1 (w/ Nano Banana 2)" reads as model id `nano-banana-3`.
 - **Aspect:** "Landscape" produced 4:3 output from 16:9 plates. See PROMPTING.md.
+- **Screenshot frame ≠ page pixels at non-100 % Chrome zoom.** At 67 % (dpr 1, page 1920 px wide) screenshots came back
+  1568 px wide: click at page × (screenshot width / innerWidth). `frame()` does this for you.
+- **`refs()` lags the click.** Read straight after the board-item click, it can still be `[]`; it showed the new ref
+  about 1 s later. Use `expectRefs(n)`.
+- **The Image slot moves right one chip (138 page px at 67 %) per attached ref.** `controls()` and `attachPlan()`
+  know where it is.
+- **The zoom menu can miss its first click** (the next click then lands on the canvas and selects whatever is under
+  it). Gate the menu item with `menuItem()`, and click the zoom button again if it throws.
+- **A 1 fps window.** When the Chrome window is covered or not in front, Chrome throttles it to one frame per second.
+  Screenshots then time out (30 s) and menus lag; JS still works. Check with
+  `requestAnimationFrame` timing (1,000 ms frames = throttled) and ask the operator to bring the window to the front.
+- **Before Ctrl+Z, check focus.** With focus in the prompt editor, Ctrl+Z undoes prompt typing, not the board. Click
+  the canvas first. Ctrl+Z on the canvas undoes a placement or a move cleanly (the undo title goes back).
+- **A click on empty canvas closes the Generate panel** (refs and prompt are kept). So never deselect that way
+  mid-round: the filmstrip disappears, and the next "filmstrip" drag moves a canvas item instead (seen 2026-10-14;
+  undone with Ctrl+Z). Deselect before opening the panel instead, as in the attach playbook.
+- **Dropping onto a selected item's toolbar does nothing.** `occluders()` includes the toolbar from v7, so plan each
+  drop after the previous one.
 
 ## Prompting
 

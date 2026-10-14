@@ -89,6 +89,16 @@ Next things to try: a matching aspect, then a composition reference.
 - **Keep game, franchise and character-IP names out.** Firefly's filter may block them. Describe the look instead.
 - One generation per request. Judge it, then change one thing.
 
+## 5b. Words that pull tropes, and steps that become captions
+
+- **A loaded word can outweigh the reference image.** Asked to give a puppet "the alien's body shape" with a cute,
+  bead-eyed alien as the ref, Nano Banana 2 produced the stock grey alien (huge almond eyes). The word "alien" won.
+  Describe the *shape* in neutral terms instead ("a big round head about as wide as the shoulders, a tiny tapered body,
+  short stubby limbs"), and name the features to keep ("his own small bead eyes and closed smile").
+- **A list of named steps renders as captions.** Six "panel 1: …, panel 2: …" phrases came back as a captioned
+  infographic despite "No text, no labels". Describe the variation as one range ("from his own proportions to the most
+  extreme") and add "no captions".
+
 ## 6. Models in the Boards picker (Oct 2026)
 
 | Model (picker) | Notes |
