@@ -1,0 +1,34 @@
+{
+  "schema": "boards-pilot-ledger-v1",
+  "board": "https://firefly.adobe.com/boards/id/urn:aaid:sc:US:00000000-0000-0000-0000-000000000000",
+  "board_name": "",
+  "updated": "",
+  "notes": [
+    "world = board units from boards_pilot.js selection().world. Re-register an item when its toPage() box misses it.",
+    "node = the sceneNode id read from refs() when the item was attached as a ref (Boards' only exposed item identity).",
+    "Labels are ours: Boards keeps no item names."
+  ],
+  "items": {
+    "example_plate": {
+      "node": null,
+      "world": {"x": 0, "y": 0, "w": 1600, "h": 900},
+      "role": "layout plate",
+      "file": "optional local source path (stripped on export)"
+    }
+  },
+  "recipes": {
+    "example_restyle": {
+      "model_ui": "Gemini 3.1 (w/ Nano Banana 2)",
+      "model_id": "nano-banana-3",
+      "credits": 20,
+      "refs": ["<plate>", "example_look_ref"],
+      "prompt": "full prompt text, or a path to it",
+      "anchor": "label of a result to Load for this recipe",
+      "notes": []
+    }
+  },
+  "runs": [
+    {"when": "ISO time", "recipe": "example_restyle", "plate": "example_plate", "credits": 20,
+     "result": "label of the placed result", "result_id": "", "verdict": ""}
+  ]
+}

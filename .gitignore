@@ -1,0 +1,9 @@
+# runtime state and outputs never live in this repo
+*.ledger.json
+ledgers/
+snapshots/
+boards-receipt-*.json
+.cx_tmp/
+__pycache__/
+*.pyc
+.boards-pilot/
